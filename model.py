@@ -34,7 +34,7 @@ class PositionalEncoding(nn.Module):
         self.register_buffer('pe',pe)
 
     def forward(self, x):
-        x = x + (self.pe[:, :x.shape[1], :]).requires_grad(False)
+        x = x + self.pe[:, :x.shape[1], :]
         return self.dropout(x)
 
 class LayerNormalization(nn.Module):
@@ -77,13 +77,13 @@ class MultiheadAttentionBlock(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     @staticmethod
-    def attention(query,key,value, mask, dropout: nn.Dropout):
-        d_k = query.shape(-1)
+    def attention(query, key, value, mask, dropout: nn.Dropout):
+        d_k = query.shape[-1]
         # (Batch,h, Seq_len, d_k) -> (Batch,h, Seq_len, Seq_len)
         attention_scores = (query @ key.transpose(-2, -1)) / math.sqrt(d_k)
         if mask is not None:
             attention_scores.masked_fill(mask == 0, -1e9) # (Batch, h, Seq_len, Seq_len)
-        attention_scores = attention_scores.softmax(attention_scores, dim=-1) # (Batch, h, Seq_len, Seq_len)
+        attention_scores = torch.softmax(attention_scores, dim=-1) # (Batch, h, Seq_len, Seq_len)
         if dropout is not None:
             attention_scores = dropout(attention_scores)
 

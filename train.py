@@ -33,7 +33,7 @@ def get_or_build_tokenizer(config, dataset, language):
         tokenizer = Tokenizer.from_file(str(tokenizer_path))
     return tokenizer
 
-def get_dataset(config, language):
+def get_dataset(config):
     dataset_raw = load_dataset('opus_books',f'{config["lang_src"]}-{config["lang_tgt"]}', split='train')
     #build tokenizers
     tokenizer_src = get_or_build_tokenizer(config, dataset_raw, config['lang_src'])
@@ -110,11 +110,14 @@ def train_model(config):
             # run the tensor through the model
             encoder_output = model.encode(encoder_input, encoder_mask)
             decoder_output = model.decode(encoder_output, encoder_mask, decoder_input, decoder_mask)
-            proj_output = model.projection(decoder_output)  # (batch, seq_len, vocab_tgt_len)
+            proj_output = model.project(decoder_output)  # (batch, seq_len, vocab_tgt_len)
 
             label = batch['label'].to(device)  # (batch, seq_len)
             #(batch, seq_len, vocab_tgt_len)  --> (batch * seq_len, vocab_tgt_len)
-            loss = loss_fn(proj_output.view(-1, tokenizer_tgt.get_vocab_size()))
+            loss = loss_fn(
+                proj_output.view(-1, tokenizer_tgt.get_vocab_size()),
+                label.view(-1)
+            )
             batch_iterator.set_postfix({f"loss": f"{loss.item():6.3f}"})
 
             #log the loss to tensorboard
