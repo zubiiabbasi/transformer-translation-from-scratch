@@ -101,8 +101,20 @@ def get_dataset(config):
     validation_dataset_size = len(dataset_raw) - train_dataset_size
     train_dataset_raw , validation_dataset_raw= random_split(dataset_raw, [train_dataset_size, validation_dataset_size])
 
-    train_dataset = BilingualDataset(train_dataset_raw, tokenizer_src, tokenizer_tgt, config['lang_src'], config['lang_tgt'], config['seq_len'])
-    validation_dataset = BilingualDataset(validation_dataset_raw, tokenizer_src, tokenizer_tgt, config['lang_src'], config['lang_tgt'], config['seq_len'])
+    # Filter out samples with long source or target sequences
+    filtered_train_data = [
+        item for item in train_dataset_raw
+        if len(tokenizer_src.encode(item['translation'][config['lang_src']]).ids) <= config['seq_len']
+        and len(tokenizer_tgt.encode(item['translation'][config['lang_tgt']]).ids) <= config['seq_len']
+    ]
+    filtered_val_data = [
+        item for item in validation_dataset_raw
+        if len(tokenizer_src.encode(item['translation'][config['lang_src']]).ids) <= config['seq_len']
+        and len(tokenizer_tgt.encode(item['translation'][config['lang_tgt']]).ids) <= config['seq_len']
+    ]
+
+    train_dataset = BilingualDataset(filtered_train_data, tokenizer_src, tokenizer_tgt, config['lang_src'], config['lang_tgt'], config['seq_len'])
+    validation_dataset = BilingualDataset(filtered_val_data, tokenizer_src, tokenizer_tgt, config['lang_src'], config['lang_tgt'], config['seq_len'])
 
     max_len_src = 0
     max_len_tgt = 0
