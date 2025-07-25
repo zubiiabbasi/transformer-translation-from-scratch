@@ -14,6 +14,63 @@ from config import get_weights_path, get_config
 from tqdm import tqdm
 import warnings
 
+
+def greedy_decode(model,source, source_mask, tokenizer_src, tokenizer_tgt, max_len, device):
+    sos_idx = tokenizer_tgt.token_to_id('[SOS]')
+    eos_idx = tokenizer_tgt.token_to_id('[EOS]')
+    #precompute the encoder output
+    encoder_output = model.encode(source, source_mask)
+    # initialize the decoder input with SOS token
+    decoder_input = torch.empty(1,1).fill_(sos_idx).type_as(source).to(device)
+    while True:
+        if decoder_input.size(1) == max_len:
+            break
+        #build decoder mask
+        decoder_mask = causal_mask(decoder_input.size(1)).type_as(source_mask).to(device)
+        # calculate the decoder output
+        decoder_output = model.decode(encoder_output, source_mask, decoder_input, decoder_mask)
+        # get the next token
+        prob = model.project(decoder_output[:,-1])
+        _, next_word = torch.max(prob, dim= 1)
+
+        # append the next token to the decoder input
+        decoder_input = torch.cat([decoder_input, torch.empty(1,1).type_as(source).fill_(next_word.item()).to(device)], dim=1)
+
+        if next_word.item() == eos_idx:
+            break
+    return decoder_input.squeeze(0)
+
+
+def run_validation(model, validation_dataset, tokenizer_src, tokenizer_tgt, max_len, device, print_msg,global_step, writer, num_examples=2 ):
+    model.eval()
+    count = 0
+    #Size of control window
+    console_width = 80
+
+    with torch.no_grad():
+        for batch in validation_dataset:
+            count += 1
+            encoder_input = batch['encoder_input'].to(device)
+            encoder_mask = batch['encoder_mask'].to(device)
+
+            assert encoder_input.size(0) == 1, "Batch size should be 1 for validation"
+            model_output = greedy_decode(model, encoder_input, encoder_mask, tokenizer_src, tokenizer_tgt, max_len, device)
+
+            src_text = batch['src_text'][0]
+            tgt_text = batch['tgt_text'][0]
+            model_output_text = tokenizer_tgt.decode(model_output.detach().cpu().numpy())
+
+            print_msg('-'*console_width)
+            print_msg(f"Source: {src_text}")
+            print_msg(f"Expected: {tgt_text}")
+            print_msg(f"Predicted: {model_output_text}")
+
+            if count == num_examples:
+                break
+
+
+
+
 def get_all_sentences(dataset, language):
     sentences = []
     for example in dataset:
@@ -83,7 +140,7 @@ def train_model(config):
     model.to(device)
 
     #Tensorboard
-    write = SummaryWriter(config['experiment_name'])
+    writer = SummaryWriter(config['experiment_name'])
 
     optimizer = torch.optim.Adam(model.parameters(), lr=config['lr'], eps = 1e-9)
     initial_epoch = 0
@@ -99,9 +156,11 @@ def train_model(config):
     loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer_tgt.token_to_id('[PAD]'), label_smoothing= 0.1).to(device)
 
     for epoch in range(initial_epoch, config['num_epochs']):
-        model.train()
+        
         batch_iterator = tqdm(train_dataloader, desc=f"Processing epoch {epoch:02d}")
         for batch in batch_iterator:
+            model.train()
+
             encoder_input = batch['encoder_input'].to(device)  # (batch, seq_len)
             decoder_input = batch['decoder_input'].to(device)  # (batch seq_len)
             encoder_mask = batch['encoder_mask'].to(device)  # (batch, 1,1, seq_len)
@@ -121,14 +180,26 @@ def train_model(config):
             batch_iterator.set_postfix({f"loss": f"{loss.item():6.3f}"})
 
             #log the loss to tensorboard
-            write.add_scalar('train loss', loss.item(), global_step)
-            write.flush()
+            writer.add_scalar('train loss', loss.item(), global_step)
+            writer.flush()
 
             # backpropagation
             loss.backward()
             # update the weights
             optimizer.step()
             optimizer.zero_grad()
+
+            run_validation(
+                model,
+                validation_dataloader,
+                tokenizer_src,
+                tokenizer_tgt,
+                config['seq_len'],
+                device,
+                lambda msg: batch_iterator.write(msg),
+                global_step,
+                writer,
+            )
 
             global_step += 1
 
