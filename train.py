@@ -189,7 +189,9 @@ def train_model(config):
             optimizer.step()
             optimizer.zero_grad()
 
-            run_validation(
+            global_step += 1
+        
+        run_validation(
                 model,
                 validation_dataloader,
                 tokenizer_src,
@@ -200,8 +202,6 @@ def train_model(config):
                 global_step,
                 writer,
             )
-
-            global_step += 1
 
         # save the model
         model_filename = get_weights_path(config, f'{epoch:02d}')
