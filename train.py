@@ -91,30 +91,29 @@ def get_or_build_tokenizer(config, dataset, language):
     return tokenizer
 
 def get_dataset(config):
+
     dataset_raw = load_dataset('opus_books',f'{config["lang_src"]}-{config["lang_tgt"]}', split='train')
     #build tokenizers
     tokenizer_src = get_or_build_tokenizer(config, dataset_raw, config['lang_src'])
     tokenizer_tgt = get_or_build_tokenizer(config, dataset_raw, config['lang_tgt'])
 
+    # Filter out samples with long source or target sequences BEFORE splitting
+    filtered_data = [
+        item for item in dataset_raw
+        if len(tokenizer_src.encode(item['translation'][config['lang_src']]).ids) <= config['seq_len']
+        and len(tokenizer_tgt.encode(item['translation'][config['lang_tgt']]).ids) <= config['seq_len']
+    ]
+
     #keep 90% of the data for training and 10% for validation
-    train_dataset_size = int(len(dataset_raw) * 0.9)
-    validation_dataset_size = len(dataset_raw) - train_dataset_size
-    train_dataset_raw , validation_dataset_raw= random_split(dataset_raw, [train_dataset_size, validation_dataset_size])
+    train_dataset_size = int(len(filtered_data) * 0.9)
+    validation_dataset_size = len(filtered_data) - train_dataset_size
+    train_dataset_raw, validation_dataset_raw = random_split(filtered_data, [train_dataset_size, validation_dataset_size])
 
-    # Filter out samples with long source or target sequences
-    filtered_train_data = [
-        item for item in train_dataset_raw
-        if len(tokenizer_src.encode(item['translation'][config['lang_src']]).ids) <= config['seq_len']
-        and len(tokenizer_tgt.encode(item['translation'][config['lang_tgt']]).ids) <= config['seq_len']
-    ]
-    filtered_val_data = [
-        item for item in validation_dataset_raw
-        if len(tokenizer_src.encode(item['translation'][config['lang_src']]).ids) <= config['seq_len']
-        and len(tokenizer_tgt.encode(item['translation'][config['lang_tgt']]).ids) <= config['seq_len']
-    ]
+    train_data = [filtered_data[i] for i in train_dataset_raw.indices]
+    val_data = [filtered_data[i] for i in validation_dataset_raw.indices]
 
-    train_dataset = BilingualDataset(filtered_train_data, tokenizer_src, tokenizer_tgt, config['lang_src'], config['lang_tgt'], config['seq_len'])
-    validation_dataset = BilingualDataset(filtered_val_data, tokenizer_src, tokenizer_tgt, config['lang_src'], config['lang_tgt'], config['seq_len'])
+    train_dataset = BilingualDataset(train_data, tokenizer_src, tokenizer_tgt, config['lang_src'], config['lang_tgt'], config['seq_len'])
+    validation_dataset = BilingualDataset(val_data, tokenizer_src, tokenizer_tgt, config['lang_src'], config['lang_tgt'], config['seq_len'])
 
     max_len_src = 0
     max_len_tgt = 0
@@ -126,7 +125,7 @@ def get_dataset(config):
 
     print(f"Max source length: {max_len_src}, Max target length: {max_len_tgt}")
 
-    train_dataloader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True)
+    train_dataloader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True)
     validation_dataloader = DataLoader(validation_dataset, batch_size= 1, shuffle= True)
 
     return train_dataloader, validation_dataloader, tokenizer_src, tokenizer_tgt
