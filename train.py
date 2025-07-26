@@ -38,8 +38,6 @@ def greedy_decode(model,source, source_mask, tokenizer_src, tokenizer_tgt, max_l
 
         if next_word.item() == eos_idx:
             break
-    # Debug: print the generated token IDs
-    print("[DEBUG] Decoder output token IDs:", decoder_input.squeeze(0).tolist())
     return decoder_input.squeeze(0)
 
 
@@ -172,9 +170,6 @@ def train_model(config):
         model.train()
         batch_iterator = tqdm(train_dataloader, desc=f"Processing epoch {epoch:02d}")
         for batch in batch_iterator:
-            # Debug: print a sample of decoder_input and label
-            print("[DEBUG] Decoder input sample:", batch['decoder_input'][0].tolist())
-            print("[DEBUG] Label sample:", batch['label'][0].tolist())
 
             encoder_input = batch['encoder_input'].to(device)  # (batch, seq_len)
             decoder_input = batch['decoder_input'].to(device)  # (batch seq_len)
