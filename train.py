@@ -157,7 +157,7 @@ def train_model(config):
     initial_epoch = 0
     global_step = 0
     if config['preload']:
-        model_filename =  get_weights_path(config,config('preload'))
+        model_filename =  get_weights_path(config, config['preload'])
         print(f"Preloading model {model_filename}")
         state = torch.load(model_filename)
         initial_epoch = state['epoch'] + 1
@@ -167,11 +167,10 @@ def train_model(config):
     loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer_tgt.token_to_id('[PAD]'), label_smoothing= 0.1).to(device)
 
     for epoch in range(initial_epoch, config['num_epochs']):
-        
+        model.train()
         batch_iterator = tqdm(train_dataloader, desc=f"Processing epoch {epoch:02d}")
         for batch in batch_iterator:
-            model.train()
-
+            
             encoder_input = batch['encoder_input'].to(device)  # (batch, seq_len)
             decoder_input = batch['decoder_input'].to(device)  # (batch seq_len)
             encoder_mask = batch['encoder_mask'].to(device)  # (batch, 1,1, seq_len)
