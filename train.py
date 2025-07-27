@@ -13,6 +13,7 @@ from torch.utils.tensorboard import SummaryWriter
 from config import get_weights_path, get_config
 from tqdm import tqdm
 import warnings
+import torchmetrics
 
 
 def greedy_decode(model,source, source_mask, tokenizer_src, tokenizer_tgt, max_len, device):
@@ -30,8 +31,8 @@ def greedy_decode(model,source, source_mask, tokenizer_src, tokenizer_tgt, max_l
         # calculate the decoder output
         decoder_output = model.decode(encoder_output, source_mask, decoder_input, decoder_mask)
         # get the next token
-        prob = model.project(decoder_output[:,-1])
-        _, next_word = torch.max(prob, dim= 1)
+        prob = model.project(decoder_output[:, -1])
+        _, next_word = torch.max(prob, dim = 1)
 
         # append the next token to the decoder input
         decoder_input = torch.cat([decoder_input, torch.empty(1,1).type_as(source).fill_(next_word.item()).to(device)], dim=1)
@@ -41,9 +42,14 @@ def greedy_decode(model,source, source_mask, tokenizer_src, tokenizer_tgt, max_l
     return decoder_input.squeeze(0)
 
 
-def run_validation(model, validation_dataset, tokenizer_src, tokenizer_tgt, max_len, device, print_msg,global_step, writer, num_examples=2 ):
+def run_validation(model, validation_dataset, tokenizer_src, tokenizer_tgt, max_len, device, print_msg, global_step, writer, num_examples=2 ):
     model.eval()
     count = 0
+
+    source_texts = []
+    expected = []
+    predicted = []
+
     #Size of control window
     console_width = 80
 
@@ -60,23 +66,45 @@ def run_validation(model, validation_dataset, tokenizer_src, tokenizer_tgt, max_
             tgt_text = batch['tgt_text'][0]
             model_output_text = tokenizer_tgt.decode(model_output.detach().cpu().numpy())
 
+            source_texts.append(src_text)
+            expected.append(tgt_text)
+            predicted.append(model_output_text)
+
             print_msg('-'*console_width)
-            print_msg(f"Source: {src_text}")
-            print_msg(f"Expected: {tgt_text}")
-            print_msg(f"Predicted: {model_output_text}")
+            print_msg(f"{f'SOURCE: ':>12}{src_text}")
+            print_msg(f"{f'TARGET: ':>12}{tgt_text}")
+            print_msg(f"{f'PREDICTED: ':>12}{model_output_text}")
 
             if count == num_examples:
+                print_msg('-'*console_width)
                 break
+
+    if writer:
+        # Evaluate the character error rate
+        # Compute the char error rate 
+        metric = torchmetrics.CharErrorRate()
+        cer = metric(predicted, expected)
+        writer.add_scalar('validation cer', cer, global_step)
+        writer.flush()
+
+        # Compute the word error rate
+        metric = torchmetrics.WordErrorRate()
+        wer = metric(predicted, expected)
+        writer.add_scalar('validation wer', wer, global_step)
+        writer.flush()
+
+        # Compute the BLEU metric
+        metric = torchmetrics.BLEUScore()
+        bleu = metric(predicted, expected)
+        writer.add_scalar('validation BLEU', bleu, global_step)
+        writer.flush()
 
 
 
 
 def get_all_sentences(dataset, language):
-    sentences = []
-    for example in dataset:
-        if language in example:
-            sentences.append(example[language])
-    return sentences
+    for item in dataset:
+        yield item['translation'][language]
 
 def get_or_build_tokenizer(config, dataset, language):
     tokenizer_path = Path(config['tokenizer_file'].format(language))
@@ -97,7 +125,6 @@ def get_dataset(config):
     tokenizer_src = get_or_build_tokenizer(config, dataset_raw, config['lang_src'])
     tokenizer_tgt = get_or_build_tokenizer(config, dataset_raw, config['lang_tgt'])
 
-    # Filter out samples with long source or target sequences BEFORE splitting
     filtered_data = [
         item for item in dataset_raw
         if len(tokenizer_src.encode(item['translation'][config['lang_src']]).ids) <= config['seq_len']
@@ -125,7 +152,7 @@ def get_dataset(config):
 
     print(f"Max source length: {max_len_src}, Max target length: {max_len_tgt}")
 
-    train_dataloader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True)
+    train_dataloader = DataLoader(train_dataset, batch_size=config['batch_size'], shuffle=True, drop_last=True)  
     validation_dataloader = DataLoader(validation_dataset, batch_size= 1, shuffle= True)
 
     return train_dataloader, validation_dataloader, tokenizer_src, tokenizer_tgt
@@ -164,7 +191,7 @@ def train_model(config):
         optimizer.load_state_dict(state['optimizer_state_dict'])
         global_step = state['global_step']
 
-    loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer_tgt.token_to_id('[PAD]'), label_smoothing= 0.1).to(device)
+    loss_fn = nn.CrossEntropyLoss(ignore_index=tokenizer_src.token_to_id('[PAD]'), label_smoothing= 0.1).to(device)
 
     for epoch in range(initial_epoch, config['num_epochs']):
         model.train()
@@ -197,7 +224,7 @@ def train_model(config):
             loss.backward()
             # update the weights
             optimizer.step()
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none= True)
 
             global_step += 1
         
@@ -210,7 +237,7 @@ def train_model(config):
                 device,
                 lambda msg: batch_iterator.write(msg),
                 global_step,
-                writer,
+                writer
             )
 
         # save the model

@@ -3,7 +3,6 @@ import torch.nn as nn
 import math
 
 class LayerNormalization(nn.Module):
-
     def __init__(self, features: int, eps:float=10**-6) -> None:
         super().__init__()
         self.eps = eps
@@ -20,7 +19,6 @@ class LayerNormalization(nn.Module):
         return self.alpha * (x - mean) / (std + self.eps) + self.bias
 
 class FeedForwardBlock(nn.Module):
-
     def __init__(self, d_model: int, d_ff: int, dropout: float) -> None:
         super().__init__()
         self.linear_1 = nn.Linear(d_model, d_ff) # w1 and b1
@@ -32,7 +30,6 @@ class FeedForwardBlock(nn.Module):
         return self.linear_2(self.dropout(torch.relu(self.linear_1(x))))
 
 class InputEmbeddings(nn.Module):
-
     def __init__(self, d_model: int, vocab_size: int) -> None:
         super().__init__()
         self.d_model = d_model
@@ -45,7 +42,6 @@ class InputEmbeddings(nn.Module):
         return self.embedding(x) * math.sqrt(self.d_model)
     
 class PositionalEncoding(nn.Module):
-
     def __init__(self, d_model: int, seq_len: int, dropout: float) -> None:
         super().__init__()
         self.d_model = d_model
@@ -71,7 +67,6 @@ class PositionalEncoding(nn.Module):
         return self.dropout(x)
 
 class ResidualConnection(nn.Module):
-    
         def __init__(self, features: int, dropout: float) -> None:
             super().__init__()
             self.dropout = nn.Dropout(dropout)
@@ -81,7 +76,6 @@ class ResidualConnection(nn.Module):
             return x + self.dropout(sublayer(self.norm(x)))
 
 class MultiHeadAttentionBlock(nn.Module):
-
     def __init__(self, d_model: int, h: int, dropout: float) -> None:
         super().__init__()
         self.d_model = d_model # Embedding vector size
@@ -134,7 +128,6 @@ class MultiHeadAttentionBlock(nn.Module):
         return self.w_o(x)
 
 class EncoderBlock(nn.Module):
-
     def __init__(self, features: int, self_attention_block: MultiHeadAttentionBlock, feed_forward_block: FeedForwardBlock, dropout: float) -> None:
         super().__init__()
         self.self_attention_block = self_attention_block
@@ -147,7 +140,6 @@ class EncoderBlock(nn.Module):
         return x
     
 class Encoder(nn.Module):
-
     def __init__(self, features: int, layers: nn.ModuleList) -> None:
         super().__init__()
         self.layers = layers
@@ -159,7 +151,6 @@ class Encoder(nn.Module):
         return self.norm(x)
 
 class DecoderBlock(nn.Module):
-
     def __init__(self, features: int, self_attention_block: MultiHeadAttentionBlock, cross_attention_block: MultiHeadAttentionBlock, feed_forward_block: FeedForwardBlock, dropout: float) -> None:
         super().__init__()
         self.self_attention_block = self_attention_block
@@ -174,7 +165,6 @@ class DecoderBlock(nn.Module):
         return x
     
 class Decoder(nn.Module):
-
     def __init__(self, features: int, layers: nn.ModuleList) -> None:
         super().__init__()
         self.layers = layers
@@ -186,7 +176,6 @@ class Decoder(nn.Module):
         return self.norm(x)
 
 class ProjectionLayer(nn.Module):
-
     def __init__(self, d_model, vocab_size) -> None:
         super().__init__()
         self.proj = nn.Linear(d_model, vocab_size)
@@ -196,7 +185,6 @@ class ProjectionLayer(nn.Module):
         return self.proj(x)
     
 class Transformer(nn.Module):
-
     def __init__(self, encoder: Encoder, decoder: Decoder, src_embed: InputEmbeddings, tgt_embed: InputEmbeddings, src_pos: PositionalEncoding, tgt_pos: PositionalEncoding, projection_layer: ProjectionLayer) -> None:
         super().__init__()
         self.encoder = encoder
