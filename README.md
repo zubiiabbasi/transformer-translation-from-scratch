@@ -38,6 +38,7 @@ pip install -r requirements.txt
 
 ## Configuration
 Edit `config.py` to change hyperparameters, language pairs, or experiment names.
+- Change `lang_src`/`lang_tgt` in `config.py` according to your desire langugae
 
 ## File Overview
 - `train.py` — Training loop
@@ -47,7 +48,12 @@ Edit `config.py` to change hyperparameters, language pairs, or experiment names.
 - `translate.py` — Translate sentences
 - `requirements.txt` — Dependencies
 
-## Notes
-- Change `lang_src`/`lang_tgt` in `config.py` according to your desire langugae
+## Notebooks
+
+Jupyter notebooks are included for:
+- **Inference** (`inference.ipynb`): Run and validate translations on sample sentences using your trained model.
+- **Attention Visualization** (`attention_visual.ipynb`): Visualize attention weights and model behavior.
+
+Use these notebooks for analysis, debugging, and demonstration. Open them with Jupyter or VS Code's notebook interface.
 
 
