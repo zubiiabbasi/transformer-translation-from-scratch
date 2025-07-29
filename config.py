@@ -7,11 +7,11 @@ def get_config():
         "lr": 10**-4,
         "seq_len" : 350, 
         "d_model" : 512,
-        "lang_src": "de",
-        "lang_tgt": "en",
+        "lang_src": "de",  # Source language
+        "lang_tgt": "en",  # Target language
         "model_folder": "weights",
         "model_basename": "tmodel_",
-        "preload": None,
+        "preload": None, # Path to pretrained weights, if any e.g: "09"
         "tokenizer_file": "tokenizer_{0}.json",
         "experiment_name": "runs/tmodel"
     }
