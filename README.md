@@ -38,7 +38,6 @@ pip install -r requirements.txt
 
 ## Configuration
 Edit `config.py` to change hyperparameters, language pairs, or experiment names.
-- Change `lang_src`/`lang_tgt` in `config.py` according to your desire langugae
 
 ## File Overview
 - `train.py` — Training loop
