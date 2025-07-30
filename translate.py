@@ -1,5 +1,5 @@
 from pathlib import Path
-from config import get_config, latest_weights_file_path 
+from config import get_config, get_weights_path 
 from model import build_transformer
 from tokenizers import Tokenizer
 from datasets import load_dataset
@@ -10,15 +10,14 @@ import sys
 def translate(sentence: str):
     # Define the device, tokenizers, and model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("Using device:", device)
     config = get_config()
     tokenizer_src = Tokenizer.from_file(str(Path(config['tokenizer_file'].format(config['lang_src']))))
     tokenizer_tgt = Tokenizer.from_file(str(Path(config['tokenizer_file'].format(config['lang_tgt']))))
     model = build_transformer(tokenizer_src.get_vocab_size(), tokenizer_tgt.get_vocab_size(), config["seq_len"], config['seq_len'], d_model=config['d_model']).to(device)
 
     # Load the pretrained weights
-    model_filename = latest_weights_file_path(config)
-    state = torch.load(model_filename)
+    model_filename = get_weights_path(config, f'29') # Use the last epoch or best epoch
+    state = torch.load(model_filename, map_location=device)
     model.load_state_dict(state['model_state_dict'])
 
     # if the sentence is a number use it as an index to the test set
@@ -48,12 +47,6 @@ def translate(sentence: str):
         # Initialize the decoder input with the sos token
         decoder_input = torch.empty(1, 1).fill_(tokenizer_tgt.token_to_id('[SOS]')).type_as(source).to(device)
 
-        # Print the source sentence and target start prompt
-        if label != "": print(f"{f'ID: ':>12}{id}") 
-        print(f"{f'SOURCE: ':>12}{sentence}")
-        if label != "": print(f"{f'TARGET: ':>12}{label}") 
-        print(f"{f'PREDICTED: ':>12}", end='')
-
         # Generate the translation word by word
         while decoder_input.size(1) < seq_len:
             # build mask for target and calculate output
@@ -65,9 +58,6 @@ def translate(sentence: str):
             _, next_word = torch.max(prob, dim=1)
             decoder_input = torch.cat([decoder_input, torch.empty(1, 1).type_as(source).fill_(next_word.item()).to(device)], dim=1)
 
-            # print the translated word
-            print(f"{tokenizer_tgt.decode([next_word.item()])}", end=' ')
-
             # break if we predict the end of sentence token
             if next_word == tokenizer_tgt.token_to_id('[EOS]'):
                 break
@@ -76,4 +66,4 @@ def translate(sentence: str):
     return tokenizer_tgt.decode(decoder_input[0].tolist())
     
 #read sentence from argument
-translate(sys.argv[1] if len(sys.argv) > 1 else "I am Zubair, I am learning.")
+translate(sys.argv[1] if len(sys.argv) > 1 else "Ich bin Zubair")

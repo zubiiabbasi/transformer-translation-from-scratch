@@ -93,11 +93,9 @@ def run_validation(model, validation_dataset, tokenizer_src, tokenizer_tgt, max_
         writer.add_scalar('validation wer', wer, global_step)
         writer.flush()
 
-        # Compute the BLEU metric (tokenize sentences as required by torchmetrics)
+        # Compute the BLEU metric (pass lowercased strings, let torchmetrics handle tokenization)
         metric = torchmetrics.BLEUScore()
-        predicted_tokens = [s.lower().split() for s in predicted]  
-        expected_tokens = [[s.lower().split()] for s in expected]
-        bleu = metric(predicted_tokens, expected_tokens)
+        bleu = metric([s.lower() for s in predicted], [[s.lower()] for s in expected])
         writer.add_scalar('validation BLEU', bleu, global_step)
         writer.flush()
 
