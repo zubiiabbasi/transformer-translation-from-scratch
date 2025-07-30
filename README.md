@@ -77,8 +77,8 @@ Use these notebooks for analysis, debugging, and demonstration. Open them with J
 **Note:**
 I achieved the following results after just 15 hours of training (German to English):
 
-BLEU: 55.73 (typically varies between 50–55)
-WER: 0.67
+BLEU: 55.73 (typically varies between 50–55),
+WER: 0.67,
 CER: 0.32
 
 
