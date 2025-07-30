@@ -16,7 +16,7 @@ def translate(sentence: str):
     model = build_transformer(tokenizer_src.get_vocab_size(), tokenizer_tgt.get_vocab_size(), config["seq_len"], config['seq_len'], d_model=config['d_model']).to(device)
 
     # Load the pretrained weights
-    model_filename = get_weights_path(config, f'29') # Use the last epoch or best epoch
+    model_filename = get_weights_path(config, f'31') # Use the last epoch or best epoch
     state = torch.load(model_filename, map_location=device)
     model.load_state_dict(state['model_state_dict'])
 

@@ -24,14 +24,29 @@ pip install -r requirements.txt
 
 ## Usage
 
-1. **Train the model:**
    ```bash
    python train.py
    ```
    - Model checkpoints are saved in `weights/`.
    - Training/validation metrics are logged to TensorBoard.
 
-2. **Monitor training:**
+1. **Train the model:**
+    ```bash
+    python train.py
+    ```
+    - Model checkpoints are saved in `weights/`.
+    - Training/validation metrics are logged to TensorBoard.
+    - **After training, update the best epoch(s) wherever required (e.g., in translate, inference , or visual) to keep track of the best-performing model.**
+
+2. **Resume training:**
+    - When resuming training from a checkpoint, make sure to update the `preload` option in `config.py` to point to the correct checkpoint file.
+    - Example:
+      ```python
+      preload = '09'  # Set to your desired checkpoint
+      ```
+    - This ensures training resumes from the correct state.
+
+3. **Monitor training:**
    ```bash
    tensorboard --logdir runs/
    ```
@@ -54,5 +69,16 @@ Jupyter notebooks are included for:
 - **Attention Visualization** (`attention_visual.ipynb`): Visualize attention weights and model behavior.
 
 Use these notebooks for analysis, debugging, and demonstration. Open them with Jupyter or VS Code's notebook interface.
+
+---
+
+## Results
+
+**Note:**
+I achieved the following results after just 15 hours of training (German to English):
+
+BLEU: 55.73 (typically varies between 50–55)
+WER: 0.67
+CER: 0.32
 
 
