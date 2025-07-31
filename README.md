@@ -24,12 +24,6 @@ pip install -r requirements.txt
 
 ## Usage
 
-   ```bash
-   python train.py
-   ```
-   - Model checkpoints are saved in `weights/`.
-   - Training/validation metrics are logged to TensorBoard.
-
 1. **Train the model:**
     ```bash
     python train.py
