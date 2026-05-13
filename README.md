@@ -1,168 +1,102 @@
-# Transformer-Based Neural Machine Translation from Scratch
+# Transformer Translation from Scratch
 
-A compact research-style codebase that implements an encoder–decoder **Transformer** (Vaswani et al., 2017) for **German–English** translation using **PyTorch**, without high-level sequence APIs beyond standard modules. The implementation is intended for **reproducible experimentation**, **checkpoint portability** (including across Windows and Linux), and **pedagogical clarity**.
-
----
-
-## Abstract
-
-We present a self-contained neural machine translation (NMT) system built around a multi-head attention Transformer trained on parallel sentences from the **OPUS Books** corpus (`de`–`en`). Source and target sides use **word-level** tokenizers (Hugging Face `tokenizers`). Training optimizes a **masked cross-entropy** objective with **label smoothing**; validation reports **BLEU**, **word error rate (WER)**, and **character error rate (CER)** via `torchmetrics`, with optional **SacreBLEU** in the evaluation notebook. Inference supports **greedy left-to-right decoding**. Repository paths are anchored to the **project root** so scripts, the command-line interface, and Jupyter notebooks agree on locations for weights, tokenizers, and TensorBoard logs regardless of the shell working directory.
+End-to-end **German → English** neural machine translation with a **Transformer** encoder–decoder built in **PyTorch** (no canned `nn.Transformer` stack—attention, FFN, and training loop are explicit). Data come from **OPUS Books** (`de`–`en`) via Hugging Face `datasets`; tokenization is **word-level** (`tokenizers`). The repo is organized as an installable **`nmt`** package, with paths fixed to the **project root** so training, the CLI, and notebooks behave the same on **Windows and Linux** even if the working directory changes.
 
 ---
 
-## 1. Introduction
+## What this repository contains
 
-The dominant architecture for sequence-to-sequence modeling in machine translation is the **Transformer**, which replaces recurrence with **self-attention** and **position-wise feed-forward** layers, enabling efficient parallel training over long contexts. This repository instantiates that paradigm for a **bilingual** setting: encoder states summarize the source sentence; the decoder **attends** to those states while modeling the target distribution autoregressively.
+| Area | Details |
+|------|---------|
+| **Model** | Multi-head self-/cross-attention, position-wise ReLU FFN, sinusoidal positional encodings, dropout. Default stack: **N = 6**, **h = 8**, **d_model = 512**, **d_ff = 2048**, dropout **0.1**. |
+| **Training** | Masked cross-entropy with **label smoothing 0.1**, **Adam** (`lr = 1e-4`, `eps = 1e-9`), TensorBoard scalars, per-epoch checkpoints in `weights/` (`tmodel_XX.pt`). |
+| **Inference** | **Greedy** left-to-right decoding; CLI `translate.py` and `nmt/translate.py`. |
+| **Notebooks** | `inference.ipynb` (load model, validate, translate), `evaluate_model.ipynb` (SacreBLEU + WER/CER over many batches), `attention_visual.ipynb` (Altair attention heatmaps). |
+| **Config** | Hyperparameters, language pair, `datasource`, `checkpoint_epoch`, `preload` for resume—all in `nmt/config.py`. |
 
-The implementation follows the spirit of Vaswani et al. (2017) while adopting a **pre-norm residual** formulation and **fixed learning-rate Adam** training that match **existing checkpoints** produced from this project (see Section 4 for the precise architectural contract).
-
-**Reference.**
-
-> Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, Ł., & Polosukhin, I. (2017). [Attention Is All You Need](https://arxiv.org/abs/1706.03762). In *Advances in Neural Information Processing Systems* (NeurIPS), 30.
-
----
-
-## 2. Architecture
-
-### 2.1 Transformer model (from Vaswani et al., 2017)
-
-The canonical encoder–decoder structure is illustrated in the figure below (reproduced from the original publication). The **encoder** (left) maps an input sequence of symbol representations to a sequence of continuous representations; the **decoder** (right) generates an output sequence of symbols one element at a time. Each stack consists of **N** repeated layers of multi-head attention and position-wise feed-forward blocks, with residual connections and layer normalization as drawn.
-
-![The Transformer: model architecture (Figure 1 in Vaswani et al., 2017).](docs/figures/transformer_architecture.png)
-
-**Figure 1.** The Transformer—model architecture. *Source: Vaswani et al., “Attention Is All You Need,” NeurIPS 2017.* Reproduced here for exposition; refer to the [arXiv preprint](https://arxiv.org/abs/1706.03762) for the authoritative version.
-
-### 2.2 Default hyperparameters in this repository
-
-The implementation follows the figure at a high level: **N = 6** layers, **h = 8** attention heads, **d_model = 512**, **d_ff = 2048**, dropout **0.1**, sinusoidal positional encodings, and masked multi-head attention in the decoder. Training uses **label smoothing** (0.1) on the target vocabulary.
-
-### 2.3 Residual ordering (implementation vs figure)
-
-The paper’s diagram uses **post-norm** residuals (“Add & Norm” after each sublayer). This codebase uses **pre-norm** residuals (`x + Dropout(Sublayer(LayerNorm(x)))`) plus a **final layer norm** on each stack, as documented in Section 4, so that saved checkpoints remain valid. Data flow is otherwise aligned with the figure: encoder output supplies keys and values to the decoder’s middle attention sublayer; the top **Linear** and **Softmax** correspond to the output projection and next-token distribution in `nmt/model.py`.
-
-### 2.4 Pipeline (textual)
-
-**Corpus and tokenization:** OPUS Books (`de`–`en`) via Hugging Face `datasets`; word-level tokenizers written to `tokenizer_de.json` and `tokenizer_en.json`. **Training:** `BilingualDataset` batches through the encoder–decoder, cross-entropy with label smoothing, Adam updates; checkpoints under `weights/`, TensorBoard under `runs/`. Paths are resolved from the repository root (`nmt/config.py`). **Inference:** greedy autoregressive decoding from a trained checkpoint.
+**Implementation note (important for checkpoints):** Residuals use **pre-norm** (`x + Dropout(Sublayer(LayerNorm(x)))`) and a **final layer norm** on each stack; there is **no weight tying** between target embeddings and the output linear. That matches **weights trained with this codebase**; it is not identical to every detail of Vaswani et al. (2017), where the published diagram uses post-norm “Add & Norm”.
 
 ---
 
-## 3. Repository layout
+## Architecture (paper figure)
 
-| Path | Description |
-|------|-------------|
-| `nmt/` | Installable package: configuration, `model`, `dataset`, `train`, `translate`, checkpoint I/O |
-| `train.py`, `translate.py` | Root entry points; equivalent to `python -m nmt.train` and `python -m nmt.translate` |
-| `notebooks/` | `inference.ipynb`, `evaluate_model.ipynb`, `attention_visual.ipynb` |
-| `weights/` | Serialized training state (`tmodel_XX.pt`) |
-| `tokenizer_{de,en}.json` | Fitted word-level tokenizers (created on first training run) |
-| `runs/` | TensorBoard event files |
-| `pyproject.toml` | Editable install metadata (`pip install -e .`) |
-| `requirements.txt` | Runtime dependencies (PyTorch, `datasets`, `tokenizers`, metrics, TensorBoard, etc.) |
+The following figure is the standard Transformer diagram from the original paper (encoder left, decoder right, **N** repeated blocks, multi-head attention + FFN, then linear + softmax for logits).
+
+![The Transformer: model architecture (Figure 1, Vaswani et al., 2017).](docs/figures/transformer_architecture.png)
+
+*Figure 1 — The Transformer. Source: Vaswani et al., [Attention Is All You Need](https://arxiv.org/abs/1706.03762), NeurIPS 2017.*
 
 ---
 
-## 4. Architectural and training contract (checkpoint compatibility)
+## Project layout
 
-The following choices define the **computational graph** assumed by weights produced from this repository:
-
-- **Residuals:** pre-norm, `x + Dropout(Sublayer(LayerNorm(x)))` within each sublayer; **final layer norm** after the full encoder and decoder stacks.
-- **Embeddings and logits:** **no weight tying** between target embeddings and the output projection.
-- **Optimization:** **Adam** with fixed learning rate `lr` (default `10^{-4}`), `eps = 10^{-9}`, and **label smoothing** `0.1` on the target vocabulary.
-- **Positional encoding:** sinusoidal, non-learned; same scheme on source and target.
-
-Hyperparameters (`batch_size`, `seq_len`, `num_epochs`, language pair, `datasource`) are centralized in `nmt/config.py`. The default data source is **`opus_books`** for the configured language pair.
+| Path | Role |
+|------|------|
+| `nmt/` | Package: `config`, `model`, `dataset`, `train`, `translate`, `checkpoint` helpers |
+| `train.py`, `translate.py` | Short wrappers; same as `python -m nmt.train` / `python -m nmt.translate` |
+| `notebooks/` | Inference, evaluation, attention plots |
+| `weights/` | Checkpoints `tmodel_XX.pt` |
+| `tokenizer_de.json`, `tokenizer_en.json` | Built on first training run |
+| `runs/` | TensorBoard logs |
+| `requirements.txt` | Dependencies (torch, datasets, tokenizers, torchmetrics, tensorboard, sacrebleu, pandas, altair, …) |
+| `pyproject.toml` | Enables `pip install -e .` |
 
 ---
 
-## 5. Installation and environment
-
-From the repository root:
+## Installation
 
 ```bash
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1          # Windows PowerShell
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 pip install -e .
 ```
 
-On Windows, if script activation fails, install with the venv interpreter explicitly:
+If activation is blocked, use `.\.venv\Scripts\python.exe -m pip install -r requirements.txt` and `.\.venv\Scripts\python.exe -m pip install -e .`.
 
-```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe -m pip install -e .
-```
-
-**TensorBoard** is listed in `requirements.txt` and is imported **only inside** `train_model()` so that importing `get_model`, `get_dataset`, or `greedy_decode` in notebooks does not require TensorBoard unless training is executed.
-
-**Cross-platform paths:** artifact paths are built from the repository root (`get_project_root()` in `nmt/config.py`), which stabilizes behavior under Windows and Linux regardless of the process current working directory.
+`SummaryWriter` is imported **only when training** starts, so you can import `get_model` / `get_dataset` in notebooks without TensorBoard unless you run the full training loop.
 
 ---
 
-## 6. Usage (reproducibility)
+## How to run
 
-**Training**
+| Goal | Command / action |
+|------|------------------|
+| Train | `python train.py` |
+| Resume | Set `"preload": "09"` (etc.) in `nmt/config.py` to match `weights/tmodel_09.pt` |
+| TensorBoard | `tensorboard --logdir runs` (from repo root) |
+| Translate | `python translate.py "Your German sentence."` |
+| Default checkpoint for inference / notebooks | `checkpoint_epoch` in `nmt/config.py` (e.g. `"31"`) |
 
-```bash
-python train.py
-```
-
-**Resuming** from an epoch checkpoint: set `"preload": "<epoch>"` in `nmt/config.py` (e.g. `"09"` for `weights/tmodel_09.pt`).
-
-**TensorBoard**
-
-```bash
-tensorboard --logdir runs
-```
-
-(run from the repository root, or after the notebooks’ `os.chdir` to the root).
-
-**CLI translation**
-
-```bash
-python translate.py "Ich bin ein Berliner."
-```
-
-Default inference epoch is `checkpoint_epoch` in `nmt/config.py` (e.g. `"31"`).
-
-**Notebooks** under `notebooks/` bootstrap `sys.path` and `chdir` to the project root so relative paths to `weights/` and `runs/` remain valid when the kernel’s working directory is not the repository root.
+Open notebooks under `notebooks/`; the first code cell adds the repo root to `sys.path` and `chdir`s there so `weights/` and `runs/` resolve correctly.
 
 ---
 
-## 7. Evaluation protocol
+## Evaluation and results
 
-### 7.1 Validation during training
+**During training** (`nmt/train.py`): a few validation examples are printed each epoch; **CER**, **WER**, and **torchmetrics BLEU** are logged to TensorBoard when logging is enabled.
 
-`nmt/train.py` prints a small number of **greedy** source / target / predicted strings each epoch. When TensorBoard logging is enabled, **CER**, **WER**, and **torchmetrics BLEU** are written for that validation slice.
-
-### 7.2 Offline metrics (`evaluate_model.ipynb`)
-
-The notebook `notebooks/evaluate_model.ipynb` loads the same checkpoint and validation dataloader as inference, then aggregates **SacreBLEU** corpus BLEU together with **torchmetrics** WER and CER over many batches. The helper **`compute_bleu`** runs greedy decoding per example, builds reference / hypothesis lists, and prints corpus-level scores.
-
-Typical end of the notebook (after defining `compute_bleu`):
+**Offline evaluation** (`notebooks/evaluate_model.ipynb`): after loading the model and `val_dataloader`, the notebook defines `compute_bleu`, which greedy-decodes each batch, accumulates references and hypotheses, and prints **SacreBLEU** corpus BLEU plus **WER** and **CER** from torchmetrics. Typical call:
 
 ```python
 compute_bleu(model, val_dataloader, tokenizer_src, tokenizer_tgt, config, device, num_batches=100)
 ```
 
-- **`num_batches`** caps how many validation batches are scored (default `100` in the notebook); increase for a more stable estimate at the cost of runtime.
-- **Outputs:** printed **BLEU** (SacreBLEU), **WER**, and **CER**; illustrative runs on this project have landed near **BLEU ~53–56**, **WER ~0.67**, **CER ~0.33** on German–English OPUS-style validation, depending on epoch and checkpoint.
+`num_batches` limits runtime (raise it for a tighter estimate).
 
-### 7.3 Attention visualization
+**Example numbers** obtained with this project (German → English, OPUS-style validation; exact values depend on epoch, seed, and hardware):
 
-`notebooks/attention_visual.ipynb` renders **Altair** heatmaps of encoder self-attention, decoder self-attention, and encoder–decoder cross-attention for selected layers and heads (values reflect the last forward pass that filled each module’s `attention_scores`).
+| Setting | BLEU (SacreBLEU) | WER | CER |
+|---------|------------------|-----|-----|
+| `evaluate_model.ipynb`, `num_batches=100` (example run) | **53.65** | **0.6720** | **0.3386** |
+| Stronger checkpoint / longer training (order of magnitude) | **~55–56** | **~0.67** | **~0.32** |
 
----
-
-## 8. Empirical note
-
-Numbers in Section 7.2 are **illustrative** of strong checkpoints on this codebase, not a fixed benchmark. Hardware, `num_batches`, and data subsampling all shift reported metrics.
+These are **illustrative**, not a formal benchmark submission. The original training log for this codebase mentioned on the order of **~15 hours** to reach competitive validation quality on GPU; CPU training is much slower.
 
 ---
 
-## 9. Citation
-
-If you use this repository or build on its code, please cite the original Transformer paper and, if appropriate, acknowledge this codebase:
+## Citation
 
 ```bibtex
 @inproceedings{vaswani2017attention,
@@ -176,6 +110,6 @@ If you use this repository or build on its code, please cite the original Transf
 
 ---
 
-## License and disclaimer
+## Disclaimer
 
-Training consumes network bandwidth (dataset download) and compute (GPU recommended). Model quality and metric estimates are **not warranted**; use at your own discretion for research and education.
+Dataset download uses network bandwidth; training is compute-heavy (GPU recommended). Metrics and model quality are **not guaranteed**; use for research and learning.
