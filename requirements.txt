@@ -1,6 +1,9 @@
 torch
 torchmetrics
+tensorboard
 tqdm
 datasets
 tokenizers
 altair
+pandas
+sacrebleu
