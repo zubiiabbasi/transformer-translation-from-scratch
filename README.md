@@ -22,90 +22,27 @@ The implementation follows the spirit of Vaswani et al. (2017) while adopting a 
 
 ---
 
-## 2. System architecture
+## 2. Architecture
 
-### 2.1 High-level data and control flow
+### 2.1 Transformer model (from Vaswani et al., 2017)
 
-The diagram below summarizes how data move from the corpus through tokenization, model optimization, and decoding. Checkpoints and logs are written under paths resolved from the repository root (`nmt/config.py`).
+The canonical encoder–decoder structure is illustrated in the figure below (reproduced from the original publication). The **encoder** (left) maps an input sequence of symbol representations to a sequence of continuous representations; the **decoder** (right) generates an output sequence of symbols one element at a time. Each stack consists of **N** repeated layers of multi-head attention and position-wise feed-forward blocks, with residual connections and layer normalization as drawn.
 
-```mermaid
-flowchart TB
-  subgraph Corpus["Corpus and tokenization"]
-    HF[(Hugging Face datasets)]
-    OPUS["OPUS Books de–en"]
-    HF --> OPUS
-    OPUS --> TOKS["WordLevel tokenizers\n(tokenizer_de.json, tokenizer_en.json)"]
-  end
+![The Transformer: model architecture (Figure 1 in Vaswani et al., 2017).](docs/figures/transformer_architecture.png)
 
-  subgraph Train["Training loop"]
-    DL["DataLoader\n(BilingualDataset)"]
-    ENC["Encoder"]
-    DEC["Decoder"]
-    PROJ["Linear projection"]
-    LOSS["Cross-entropy\n+ label smoothing 0.1"]
-    ADAM["Adam optimizer\nfixed lr, eps=1e-9"]
-    DL --> ENC
-    ENC --> DEC
-    DEC --> PROJ
-    PROJ --> LOSS
-    LOSS --> ADAM
-    ADAM --> DL
-  end
+**Figure 1.** The Transformer—model architecture. *Source: Vaswani et al., “Attention Is All You Need,” NeurIPS 2017.* Reproduced here for exposition; refer to the [arXiv preprint](https://arxiv.org/abs/1706.03762) for the authoritative version.
 
-  subgraph Artifacts["Artifacts"]
-    WTS["weights / tmodel_*.pt"]
-    TB["runs / TensorBoard"]
-  end
+### 2.2 Default hyperparameters in this repository
 
-  TOKS --> DL
-  ADAM --> WTS
-  ADAM --> TB
+The implementation follows the figure at a high level: **N = 6** layers, **h = 8** attention heads, **d_model = 512**, **d_ff = 2048**, dropout **0.1**, sinusoidal positional encodings, and masked multi-head attention in the decoder. Training uses **label smoothing** (0.1) on the target vocabulary.
 
-  subgraph Infer["Inference"]
-    GREEDY["Greedy decode\n(autoregressive)"]
-  end
+### 2.3 Residual ordering (implementation vs figure)
 
-  WTS --> GREEDY
-  TOKS --> GREEDY
-```
+The paper’s diagram uses **post-norm** residuals (“Add & Norm” after each sublayer). This codebase uses **pre-norm** residuals (`x + Dropout(Sublayer(LayerNorm(x)))`) plus a **final layer norm** on each stack, as documented in Section 4, so that saved checkpoints remain valid. Data flow is otherwise aligned with the figure: encoder output supplies keys and values to the decoder’s middle attention sublayer; the top **Linear** and **Softmax** correspond to the output projection and next-token distribution in `nmt/model.py`.
 
-### 2.2 Encoder–decoder Transformer (conceptual)
+### 2.4 Pipeline (textual)
 
-The model is a stack of **identical encoder blocks** and **identical decoder blocks** (depth `N = 6` by default), with **multi-head attention** (`h = 8`), hidden size **`d_model = 512`**, and feed-forward inner dimension **`d_ff = 2048`**. Positional information is injected via **fixed sinusoidal encodings** added to token embeddings; sublayers use **dropout** (`p = 0.1`).
-
-```mermaid
-flowchart TB
-  subgraph Source["Source side"]
-    xs[Source token IDs] --> emb_s[Embedding × sqrt d_model]
-    emb_s --> pe_s[Sinusoidal positional encoding]
-    pe_s --> ENCSTACK[Encoder stack N layers]
-    ENCSTACK --> mem[Encoder representations\n(keys / values for cross-attention)]
-  end
-
-  subgraph Target["Target side (training)"]
-    xt[Target token IDs shifted] --> emb_t[Embedding × sqrt d_model]
-    emb_t --> pe_t[Sinusoidal positional encoding]
-    pe_t --> DECSTACK[Decoder stack N layers]
-    mem --> DECSTACK
-    DECSTACK --> out[Output hidden states]
-    out --> linear[Linear d_model → |V_tgt|]
-    linear --> loss[Softmax / loss vs labels]
-  end
-```
-
-### 2.3 Residual block (pre-norm variant used in this repository)
-
-Each encoder (respectively decoder) **sublayer** applies **layer normalization before** the sublayer, then a **residual add** with **dropout** on the sublayer output. After `N` blocks, an additional **layer normalization** is applied at the top of the encoder and decoder stacks. This **pre-norm** pattern differs from the original post-norm diagram in Vaswani et al. (2017) but is common in tutorials and matches **checkpoints trained from this codebase**.
-
-```mermaid
-flowchart TB
-  x(("x")) --> ln[LayerNorm]
-  ln --> sub["Sublayer\n(self-attention, cross-attention,\nor position-wise FFN)"]
-  sub --> drop[Dropout]
-  drop --> plus(("+"))
-  x --> plus
-  plus --> out["Output to next sublayer\nor next block"]
-```
+**Corpus and tokenization:** OPUS Books (`de`–`en`) via Hugging Face `datasets`; word-level tokenizers written to `tokenizer_de.json` and `tokenizer_en.json`. **Training:** `BilingualDataset` batches through the encoder–decoder, cross-entropy with label smoothing, Adam updates; checkpoints under `weights/`, TensorBoard under `runs/`. Paths are resolved from the repository root (`nmt/config.py`). **Inference:** greedy autoregressive decoding from a trained checkpoint.
 
 ---
 
