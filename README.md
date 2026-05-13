@@ -1,73 +1,81 @@
 # Transformer Translation from Scratch
 
-**German → English** neural machine translation with a **Transformer** encoder–decoder implemented in **PyTorch** without the built-in `nn.Transformer` stack (attention, FFN, masks, and training loop are explicit). The reference is [**Attention Is All You Need**](https://arxiv.org/abs/1706.03762) (Vaswani et al., NeurIPS 2017).
+**German → English** neural machine translation with a **Transformer** encoder–decoder in **PyTorch**. The model is written explicitly (attention, feed-forward blocks, masks, training loop)—not wired through `nn.Transformer`. The reference is [**Attention Is All You Need**](https://arxiv.org/abs/1706.03762) (Vaswani et al., NeurIPS 2017).
 
-Code lives in the **`nmt`** package (`pip install -e .`). Weights, tokenizers, and TensorBoard paths use **`get_project_root()`** in `nmt/config.py`, so the CLI and notebooks behave the same on **Windows and Linux** no matter which directory you launch Python from.
+Code is packaged as **`nmt`** (`pip install -e .`). Artifact paths use **`get_project_root()`** in `nmt/config.py`, so the CLI and notebooks behave consistently on **Windows and Linux** regardless of the process working directory.
 
 ---
 
 ## Compared to Vaswani et al. (2017)
 
+### Implemented from the paper
+
+The implementation follows Figure 1 and Section 3 of the paper for the **core Transformer**:
+
+- **Encoder–decoder** stack with **N = 6** layers on each side (**base** width).
+- **Multi-head scaled dot-product attention** (encoder self-attention; decoder self-attention with a **causal** mask; **encoder–decoder** cross-attention with queries from the decoder and keys/values from the encoder).
+- **Position-wise feed-forward** sublayers (**ReLU**, dropout on sublayer paths).
+- **Embeddings** scaled by **√d_model**; **sinusoidal** positional encodings summed into source and target embeddings; **dropout 0.1** on residual paths as in the paper’s setup.
+- **Output:** linear projection to the vocabulary and **softmax**; training uses **label smoothing ε = 0.1** (Sec. 5.4).
+- **Adam** with **ε = 10^{-9}**; the **learning-rate schedule** and **β₂** differ from the paper (see table).
+
+Default tensor shapes match the **base** model (**d_model = 512**, **h = 8**, **d_ff = 2048**); exact batch length, epochs, and learning rate are set in **`nmt/config.py`**.
+
+### Changed on purpose (defines checkpoint compatibility)
+
 | Topic | This repository | Paper (typical) |
 |--------|-----------------|-----------------|
-| Residual layout | **Pre-norm** + final stack norm | **Post-norm** (“Add & Norm” in Figure 1) |
-| Optimizer schedule | **Adam**, fixed `lr = 10^{-4}`, default `β₂` | **Noam** warmup schedule, `β₂ = 0.98` |
+| Residual layout | **Pre-norm** + final stack norm | **Post-norm** (“Add & Norm” in Fig. 1) |
+| Optimizer schedule | **Adam**, fixed `lr = 10^{-4}`, default `β₂` | **Noam** schedule, `β₂ = 0.98` |
 | Embeddings vs logits | **Separate** target embedding and output linear | **Weight tying** (Sec. 3.4) |
-| Data & tokens | **OPUS Books** `de`–`en`, **word-level** tokenizers | WMT’14-style **BPE** benchmark setup |
-| Decoding at inference | **Greedy** | **Beam** (e.g. width 4) in reported BLEU tables |
+| Data & tokens | **OPUS Books** `de`–`en`, **word-level** tokenizers | WMT’14-style **BPE** benchmark |
+| Inference decoding | **Greedy** | **Beam** (e.g. width 4) in reported BLEU tables |
 
-Everything else is aligned in spirit with the **base** model: scaled dot-product multi-head attention, sinusoidal positional encoding, ReLU FFN, dropout **0.1**, label smoothing **0.1**. The table above is what defines **checkpoint compatibility** for this repo.
-
----
-
-## What is included
-
-| Piece | What you get |
-|-------|----------------|
-| **Defaults** | **N = 6** layers, **h = 8** heads, **d_model = 512**, **d_ff = 2048**, dropout **0.1**, label smoothing **0.1** |
-| **Training** | `train.py` / `nmt/train.py` — masked CE + label smoothing, Adam, TensorBoard, `weights/tmodel_XX.pt` per epoch; checkpoints reloaded with `map_location` via `nmt/checkpoint.py` |
-| **Inference** | `translate.py` — greedy decoding; epoch from `checkpoint_epoch` in `nmt/config.py` |
-| **Resume** | `"preload": "<epoch>"` in `nmt/config.py` matching `weights/tmodel_<epoch>.pt` |
-| **Notebooks** | `inference.ipynb`, `evaluate_model.ipynb` (SacreBLEU + WER/CER), `attention_visual.ipynb` (Altair maps) — first cell sets repo root on `sys.path` and `chdir` |
-| **Config** | `nmt/config.py` — batch size, `seq_len`, languages, `datasource` (default `opus_books`), `checkpoint_epoch`, etc. |
+Checkpoints under `weights/` match the **deviation** column. The bullet list above describes what still follows the published architecture and objective, aside from these rows.
 
 ---
 
 ## Architecture (paper figure)
 
-Figure 1 from the paper (encoder left, decoder right, **N**× blocks, then linear + softmax):
+Figure 1 (encoder left, decoder right, **N**× blocks, linear + softmax). **Norm ordering** in the drawing is post-norm; this code uses **pre-norm** (see table).
 
 ![The Transformer: model architecture (Figure 1, Vaswani et al., 2017).](docs/figures/transformer_architecture.png)
 
 ---
 
-## Repository paths
+## Repository contents
 
 | Path | Role |
 |------|------|
-| `nmt/` | `config`, `model`, `dataset`, `train`, `translate`, `checkpoint` |
+| `nmt/` | `config`, `model`, `dataset`, `train`, `translate`, `checkpoint` (reload with `map_location`) |
 | `train.py`, `translate.py` | Same as `python -m nmt.train` / `python -m nmt.translate` |
-| `notebooks/` | Inference, evaluation, attention |
-| `weights/` | `tmodel_*.pt` |
-| `tokenizer_de.json`, `tokenizer_en.json` | Created on first train |
-| `runs/` | TensorBoard |
-| `requirements.txt`, `pyproject.toml` | Dependencies and editable install |
+| `notebooks/` | Inference, evaluation (`compute_bleu`, SacreBLEU, WER/CER), attention (Altair); first cell sets repo root on `sys.path` and `chdir` |
+| `weights/` | `tmodel_*.pt` per training epoch |
+| `tokenizer_de.json`, `tokenizer_en.json` | Written on first training run |
+| `runs/` | TensorBoard logs |
+| `requirements.txt`, `pyproject.toml` | Dependencies; editable install (`requires-python >= 3.10`) |
 
 ---
 
 ## Installation
 
+**Python 3.10+** recommended (see `pyproject.toml`).
+
 ```bash
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1          # Windows PowerShell
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 pip install -e .
 ```
 
-If activation fails: `.\.venv\Scripts\python.exe -m pip install -r requirements.txt` and `.\.venv\Scripts\python.exe -m pip install -e .`.
+**Windows (PowerShell):** `.\.venv\Scripts\Activate.ps1` before `pip`, or run  
+`.\.venv\Scripts\python.exe -m pip install -r requirements.txt` and `.\.venv\Scripts\python.exe -m pip install -e .` if activation is blocked.
 
-The `tensorboard` package is in `requirements.txt` (needed for training and `%tensorboard` in notebooks). `SummaryWriter` is imported **only inside** `train_model()`, so importing helpers from `nmt.train` in notebooks does not require TensorBoard until you actually run training.
+**Linux / macOS:** `source .venv/bin/activate` then the same `pip` lines.
+
+For Jupyter, select the interpreter from **`.venv`** so notebooks see the same packages.
+
+`tensorboard` is listed in `requirements.txt`. `SummaryWriter` is imported **only inside** `train_model()`, so importing helpers from `nmt.train` does not require TensorBoard until you run training.
 
 ---
 
@@ -78,31 +86,31 @@ The `tensorboard` package is in `requirements.txt` (needed for training and `%te
 | Train | `python train.py` |
 | TensorBoard | `tensorboard --logdir runs` (from repo root) |
 | Translate | `python translate.py "German sentence here."` |
-| Change inference epoch | `checkpoint_epoch` in `nmt/config.py` |
-| Resume training | `preload` in `nmt/config.py` → matching `weights/tmodel_*.pt` |
+| Inference epoch | `checkpoint_epoch` in `nmt/config.py` |
+| Resume training | `preload` in `nmt/config.py` → matching `weights/tmodel_<epoch>.pt` |
 
 ---
 
 ## Evaluation and results
 
-**Training** (`nmt/train.py`): prints a few validation examples each epoch; logs **CER**, **WER**, and **torchmetrics BLEU** to TensorBoard when enabled.
+During training (`nmt/train.py`), a short validation decode is printed each epoch; **CER**, **WER**, and **torchmetrics BLEU** are logged to TensorBoard when logging is on.
 
-**Notebook** `notebooks/evaluate_model.ipynb` defines `compute_bleu` (greedy decode per batch, then corpus scores):
+Offline metrics: `notebooks/evaluate_model.ipynb` defines **`compute_bleu`** (greedy decode per batch, then corpus-level scores):
 
 ```python
 compute_bleu(model, val_dataloader, tokenizer_src, tokenizer_tgt, config, device, num_batches=100)
 ```
 
-Increase `num_batches` for a more stable estimate (slower).
+Raise **`num_batches`** for a more stable estimate (slower run).
 
-**Example validation numbers** (illustrative; depend on epoch, seed, hardware):
+**Illustrative** validation numbers (German → English; depend on epoch, seed, hardware):
 
 | Context | BLEU (SacreBLEU) | WER | CER |
 |---------|------------------|-----|-----|
 | `evaluate_model.ipynb`, `num_batches=100` | **53.65** | **0.6720** | **0.3386** |
 | Stronger / longer-trained checkpoint | **~55–56** | **~0.67** | **~0.32** |
 
-Roughly **~15 hours** on GPU has been reported for competitive quality on this setup; CPU is much slower. These are not benchmark submissions.
+Order-of-magnitude **~15 hours** on GPU has been reported for competitive quality; CPU is much slower. These figures are **not** formal benchmark submissions.
 
 ---
 
@@ -122,4 +130,4 @@ Roughly **~15 hours** on GPU has been reported for competitive quality on this s
 
 ## Disclaimer
 
-Downloading the dataset uses bandwidth; training needs serious compute (GPU recommended). Metrics are not guaranteed—use for research and learning.
+Dataset download uses bandwidth; training is compute-heavy (**GPU** recommended). Metrics are not guaranteed—use for research and learning.
