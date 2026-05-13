@@ -1,45 +1,57 @@
 # Transformer Translation from Scratch
 
-End-to-end **German → English** neural machine translation with a **Transformer** encoder–decoder built in **PyTorch** (no canned `nn.Transformer` stack—attention, FFN, and training loop are explicit). Data come from **OPUS Books** (`de`–`en`) via Hugging Face `datasets`; tokenization is **word-level** (`tokenizers`). The repo is organized as an installable **`nmt`** package, with paths fixed to the **project root** so training, the CLI, and notebooks behave the same on **Windows and Linux** even if the working directory changes.
+**German → English** neural machine translation with a **Transformer** encoder–decoder implemented in **PyTorch** without the built-in `nn.Transformer` stack (attention, FFN, masks, and training loop are explicit). The reference is **“Attention Is All You Need”** (Vaswani et al., NeurIPS 2017) — [arXiv:1706.03762](https://arxiv.org/abs/1706.03762).
+
+Code lives in the **`nmt`** package (`pip install -e .`). Weights, tokenizers, and TensorBoard paths use **`get_project_root()`** in `nmt/config.py`, so the CLI and notebooks behave the same on **Windows and Linux** no matter which directory you launch Python from.
 
 ---
 
-## What this repository contains
+## Compared to Vaswani et al. (2017)
 
-| Area | Details |
-|------|---------|
-| **Model** | Multi-head self-/cross-attention, position-wise ReLU FFN, sinusoidal positional encodings, dropout. Default stack: **N = 6**, **h = 8**, **d_model = 512**, **d_ff = 2048**, dropout **0.1**. |
-| **Training** | Masked cross-entropy with **label smoothing 0.1**, **Adam** (`lr = 1e-4`, `eps = 1e-9`), TensorBoard scalars, per-epoch checkpoints in `weights/` (`tmodel_XX.pt`). |
-| **Inference** | **Greedy** left-to-right decoding; CLI `translate.py` and `nmt/translate.py`. |
-| **Notebooks** | `inference.ipynb` (load model, validate, translate), `evaluate_model.ipynb` (SacreBLEU + WER/CER over many batches), `attention_visual.ipynb` (Altair attention heatmaps). |
-| **Config** | Hyperparameters, language pair, `datasource`, `checkpoint_epoch`, `preload` for resume—all in `nmt/config.py`. |
+| Topic | This repository | Paper (typical) |
+|--------|-----------------|-----------------|
+| Residual layout | **Pre-norm** + final stack norm | **Post-norm** (“Add & Norm” in Figure 1) |
+| Optimizer schedule | **Adam**, fixed `lr = 10^{-4}`, default `β₂` | **Noam** warmup schedule, `β₂ = 0.98` |
+| Embeddings vs logits | **Separate** target embedding and output linear | **Weight tying** (Sec. 3.4) |
+| Data & tokens | **OPUS Books** `de`–`en`, **word-level** tokenizers | WMT’14-style **BPE** benchmark setup |
+| Decoding at inference | **Greedy** | **Beam** (e.g. width 4) in reported BLEU tables |
 
-**Implementation note (important for checkpoints):** Residuals use **pre-norm** (`x + Dropout(Sublayer(LayerNorm(x)))`) and a **final layer norm** on each stack; there is **no weight tying** between target embeddings and the output linear. That matches **weights trained with this codebase**; it is not identical to every detail of Vaswani et al. (2017), where the published diagram uses post-norm “Add & Norm”.
+Everything else is aligned in spirit with the **base** model: scaled dot-product multi-head attention, sinusoidal positional encoding, ReLU FFN, dropout **0.1**, label smoothing **0.1**. The table above is what defines **checkpoint compatibility** for this repo.
+
+---
+
+## What is included
+
+| Piece | What you get |
+|-------|----------------|
+| **Defaults** | **N = 6** layers, **h = 8** heads, **d_model = 512**, **d_ff = 2048**, dropout **0.1**, label smoothing **0.1** |
+| **Training** | `train.py` / `nmt/train.py` — masked CE + label smoothing, Adam, TensorBoard, `weights/tmodel_XX.pt` per epoch; checkpoints reloaded with `map_location` via `nmt/checkpoint.py` |
+| **Inference** | `translate.py` — greedy decoding; epoch from `checkpoint_epoch` in `nmt/config.py` |
+| **Resume** | `"preload": "<epoch>"` in `nmt/config.py` matching `weights/tmodel_<epoch>.pt` |
+| **Notebooks** | `inference.ipynb`, `evaluate_model.ipynb` (SacreBLEU + WER/CER), `attention_visual.ipynb` (Altair maps) — first cell sets repo root on `sys.path` and `chdir` |
+| **Config** | `nmt/config.py` — batch size, `seq_len`, languages, `datasource` (default `opus_books`), `checkpoint_epoch`, etc. |
 
 ---
 
 ## Architecture (paper figure)
 
-The following figure is the standard Transformer diagram from the original paper (encoder left, decoder right, **N** repeated blocks, multi-head attention + FFN, then linear + softmax for logits).
+Figure 1 from the paper (encoder left, decoder right, **N**× blocks, then linear + softmax):
 
 ![The Transformer: model architecture (Figure 1, Vaswani et al., 2017).](docs/figures/transformer_architecture.png)
 
-*Figure 1 — The Transformer. Source: Vaswani et al., [Attention Is All You Need](https://arxiv.org/abs/1706.03762), NeurIPS 2017.*
-
 ---
 
-## Project layout
+## Repository paths
 
 | Path | Role |
 |------|------|
-| `nmt/` | Package: `config`, `model`, `dataset`, `train`, `translate`, `checkpoint` helpers |
-| `train.py`, `translate.py` | Short wrappers; same as `python -m nmt.train` / `python -m nmt.translate` |
-| `notebooks/` | Inference, evaluation, attention plots |
-| `weights/` | Checkpoints `tmodel_XX.pt` |
-| `tokenizer_de.json`, `tokenizer_en.json` | Built on first training run |
-| `runs/` | TensorBoard logs |
-| `requirements.txt` | Dependencies (torch, datasets, tokenizers, torchmetrics, tensorboard, sacrebleu, pandas, altair, …) |
-| `pyproject.toml` | Enables `pip install -e .` |
+| `nmt/` | `config`, `model`, `dataset`, `train`, `translate`, `checkpoint` |
+| `train.py`, `translate.py` | Same as `python -m nmt.train` / `python -m nmt.translate` |
+| `notebooks/` | Inference, evaluation, attention |
+| `weights/` | `tmodel_*.pt` |
+| `tokenizer_de.json`, `tokenizer_en.json` | Created on first train |
+| `runs/` | TensorBoard |
+| `requirements.txt`, `pyproject.toml` | Dependencies and editable install |
 
 ---
 
@@ -53,46 +65,44 @@ pip install -r requirements.txt
 pip install -e .
 ```
 
-If activation is blocked, use `.\.venv\Scripts\python.exe -m pip install -r requirements.txt` and `.\.venv\Scripts\python.exe -m pip install -e .`.
+If activation fails: `.\.venv\Scripts\python.exe -m pip install -r requirements.txt` and `.\.venv\Scripts\python.exe -m pip install -e .`.
 
-`SummaryWriter` is imported **only when training** starts, so you can import `get_model` / `get_dataset` in notebooks without TensorBoard unless you run the full training loop.
+The `tensorboard` package is in `requirements.txt` (needed for training and `%tensorboard` in notebooks). `SummaryWriter` is imported **only inside** `train_model()`, so importing helpers from `nmt.train` in notebooks does not require TensorBoard until you actually run training.
 
 ---
 
 ## How to run
 
-| Goal | Command / action |
-|------|------------------|
+| Goal | Action |
+|------|--------|
 | Train | `python train.py` |
-| Resume | Set `"preload": "09"` (etc.) in `nmt/config.py` to match `weights/tmodel_09.pt` |
 | TensorBoard | `tensorboard --logdir runs` (from repo root) |
-| Translate | `python translate.py "Your German sentence."` |
-| Default checkpoint for inference / notebooks | `checkpoint_epoch` in `nmt/config.py` (e.g. `"31"`) |
-
-Open notebooks under `notebooks/`; the first code cell adds the repo root to `sys.path` and `chdir`s there so `weights/` and `runs/` resolve correctly.
+| Translate | `python translate.py "German sentence here."` |
+| Change inference epoch | `checkpoint_epoch` in `nmt/config.py` |
+| Resume training | `preload` in `nmt/config.py` → matching `weights/tmodel_*.pt` |
 
 ---
 
 ## Evaluation and results
 
-**During training** (`nmt/train.py`): a few validation examples are printed each epoch; **CER**, **WER**, and **torchmetrics BLEU** are logged to TensorBoard when logging is enabled.
+**Training** (`nmt/train.py`): prints a few validation examples each epoch; logs **CER**, **WER**, and **torchmetrics BLEU** to TensorBoard when enabled.
 
-**Offline evaluation** (`notebooks/evaluate_model.ipynb`): after loading the model and `val_dataloader`, the notebook defines `compute_bleu`, which greedy-decodes each batch, accumulates references and hypotheses, and prints **SacreBLEU** corpus BLEU plus **WER** and **CER** from torchmetrics. Typical call:
+**Notebook** `notebooks/evaluate_model.ipynb` defines `compute_bleu` (greedy decode per batch, then corpus scores):
 
 ```python
 compute_bleu(model, val_dataloader, tokenizer_src, tokenizer_tgt, config, device, num_batches=100)
 ```
 
-`num_batches` limits runtime (raise it for a tighter estimate).
+Increase `num_batches` for a more stable estimate (slower).
 
-**Example numbers** obtained with this project (German → English, OPUS-style validation; exact values depend on epoch, seed, and hardware):
+**Example validation numbers** (illustrative; depend on epoch, seed, hardware):
 
-| Setting | BLEU (SacreBLEU) | WER | CER |
+| Context | BLEU (SacreBLEU) | WER | CER |
 |---------|------------------|-----|-----|
-| `evaluate_model.ipynb`, `num_batches=100` (example run) | **53.65** | **0.6720** | **0.3386** |
-| Stronger checkpoint / longer training (order of magnitude) | **~55–56** | **~0.67** | **~0.32** |
+| `evaluate_model.ipynb`, `num_batches=100` | **53.65** | **0.6720** | **0.3386** |
+| Stronger / longer-trained checkpoint | **~55–56** | **~0.67** | **~0.32** |
 
-These are **illustrative**, not a formal benchmark submission. The original training log for this codebase mentioned on the order of **~15 hours** to reach competitive validation quality on GPU; CPU training is much slower.
+Roughly **~15 hours** on GPU has been reported for competitive quality on this setup; CPU is much slower. These are not benchmark submissions.
 
 ---
 
@@ -112,4 +122,4 @@ These are **illustrative**, not a formal benchmark submission. The original trai
 
 ## Disclaimer
 
-Dataset download uses network bandwidth; training is compute-heavy (GPU recommended). Metrics and model quality are **not guaranteed**; use for research and learning.
+Downloading the dataset uses bandwidth; training needs serious compute (GPU recommended). Metrics are not guaranteed—use for research and learning.
