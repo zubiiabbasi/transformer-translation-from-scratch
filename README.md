@@ -129,17 +129,34 @@ Default inference epoch is `checkpoint_epoch` in `nmt/config.py` (e.g. `"31"`).
 
 ---
 
-## 7. Evaluation protocol (sketch)
+## 7. Evaluation protocol
 
-- **Validation during training:** a small number of greedy-decoded examples are printed; **CER**, **WER**, and **torchmetrics BLEU** are logged when a `SummaryWriter` is present.
-- **Offline evaluation:** `notebooks/evaluate_model.ipynb` supports **SacreBLEU** and metric aggregation over many validation batches.
-- **Attention visualization:** `notebooks/attention_visual.ipynb` renders **Altair** heatmaps of encoder self-attention, decoder self-attention, and encoder–decoder cross-attention for selected layers and heads (attention tensors are read from the last forward pass that populated each module).
+### 7.1 Validation during training
+
+`nmt/train.py` prints a small number of **greedy** source / target / predicted strings each epoch. When TensorBoard logging is enabled, **CER**, **WER**, and **torchmetrics BLEU** are written for that validation slice.
+
+### 7.2 Offline metrics (`evaluate_model.ipynb`)
+
+The notebook `notebooks/evaluate_model.ipynb` loads the same checkpoint and validation dataloader as inference, then aggregates **SacreBLEU** corpus BLEU together with **torchmetrics** WER and CER over many batches. The helper **`compute_bleu`** runs greedy decoding per example, builds reference / hypothesis lists, and prints corpus-level scores.
+
+Typical end of the notebook (after defining `compute_bleu`):
+
+```python
+compute_bleu(model, val_dataloader, tokenizer_src, tokenizer_tgt, config, device, num_batches=100)
+```
+
+- **`num_batches`** caps how many validation batches are scored (default `100` in the notebook); increase for a more stable estimate at the cost of runtime.
+- **Outputs:** printed **BLEU** (SacreBLEU), **WER**, and **CER**; illustrative runs on this project have landed near **BLEU ~53–56**, **WER ~0.67**, **CER ~0.33** on German–English OPUS-style validation, depending on epoch and checkpoint.
+
+### 7.3 Attention visualization
+
+`notebooks/attention_visual.ipynb` renders **Altair** heatmaps of encoder self-attention, decoder self-attention, and encoder–decoder cross-attention for selected layers and heads (values reflect the last forward pass that filled each module’s `attention_scores`).
 
 ---
 
-## 8. Empirical note (illustrative)
+## 8. Empirical note
 
-On German–English OPUS-style training with this stack, validation **BLEU** in the low-to-mid 50s, **WER** near **0.67**, and **CER** near **0.33** have been reported for strong checkpoints; exact numbers depend on epoch, hardware, and data filtering. Treat any single run as **indicative**, not a benchmark claim.
+Numbers in Section 7.2 are **illustrative** of strong checkpoints on this codebase, not a fixed benchmark. Hardware, `num_batches`, and data subsampling all shift reported metrics.
 
 ---
 
