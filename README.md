@@ -1,6 +1,6 @@
 # Transformer Translation from Scratch
 
-**German → English** neural machine translation with a **Transformer** encoder–decoder implemented in **PyTorch** without the built-in `nn.Transformer` stack (attention, FFN, masks, and training loop are explicit). The reference is **“Attention Is All You Need”** (Vaswani et al., NeurIPS 2017) — [arXiv:1706.03762](https://arxiv.org/abs/1706.03762).
+**German → English** neural machine translation with a **Transformer** encoder–decoder implemented in **PyTorch** without the built-in `nn.Transformer` stack (attention, FFN, masks, and training loop are explicit). The reference is [**Attention Is All You Need**](https://arxiv.org/abs/1706.03762) (Vaswani et al., NeurIPS 2017).
 
 Code lives in the **`nmt`** package (`pip install -e .`). Weights, tokenizers, and TensorBoard paths use **`get_project_root()`** in `nmt/config.py`, so the CLI and notebooks behave the same on **Windows and Linux** no matter which directory you launch Python from.
 
