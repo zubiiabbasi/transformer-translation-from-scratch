@@ -1,8 +1,18 @@
 # Transformer Translation from Scratch
 
-**German → English** neural machine translation with a **Transformer** encoder–decoder in **PyTorch**. The model is written explicitly (attention, feed-forward blocks, masks, training loop)—not wired through `nn.Transformer`. The reference is [**Attention Is All You Need**](https://arxiv.org/abs/1706.03762) (Vaswani et al., NeurIPS 2017).
+**German → English** neural machine translation on the **[OPUS Books](https://opus.nlpl.eu/Books.php)** parallel corpus, using a **Transformer** encoder–decoder in **PyTorch**. The model is written explicitly (attention, feed-forward blocks, masks, training loop)—not wired through `nn.Transformer`. The reference is [**Attention Is All You Need**](https://arxiv.org/abs/1706.03762) (Vaswani et al., NeurIPS 2017).
 
 Code is packaged as **`nmt`** (`pip install -e .`). Artifact paths use **`get_project_root()`** in `nmt/config.py`, so the CLI and notebooks behave consistently on **Windows and Linux** regardless of the process working directory.
+
+---
+
+## Dataset
+
+Parallel text is **[OPUS Books](https://opus.nlpl.eu/Books.php)** (German–English), loaded in `nmt/train.py` with Hugging Face **`datasets`**: `load_dataset("opus_books", "de-en", split="train")`, matching **`datasource`**, **`lang_src`**, and **`lang_tgt`** in **`nmt/config.py`**.
+
+- **Split:** after dropping over-long sentences, the filtered list is split **90% train / 10% validation** (`random_split` in `get_dataset()`).
+- **Length filter:** sentence pairs where either side has more than **`seq_len`** word tokens (after whitespace word tokenization) are excluded.
+- **Tokenizers:** word-level vocabularies with **`min_frequency=2`**, trained on the full **`train`** split **before** length filtering; saved as **`tokenizer_de.json`** and **`tokenizer_en.json`** at the project root on first training run.
 
 ---
 
@@ -103,7 +113,7 @@ compute_bleu(model, val_dataloader, tokenizer_src, tokenizer_tgt, config, device
 
 Raise **`num_batches`** for a more stable estimate (slower run).
 
-**Illustrative** validation numbers (German → English; depend on epoch, seed, hardware):
+**Illustrative** validation numbers on **OPUS Books** (German → English; depend on epoch, seed, hardware):
 
 | Context | BLEU (SacreBLEU) | WER | CER |
 |---------|------------------|-----|-----|
